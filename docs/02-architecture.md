@@ -2,77 +2,90 @@
 
 ## 1. Назначение документа
 
-Документ описывает архитектуру клиентского веб-приложения **Karting Drive** на этапе проектирования (до реализации кода). Он определяет структуру файлов, распределение ответственности между модулями, потоки данных, работу с LocalStorage и ключевые архитектурные решения.
+Документ описывает архитектуру адаптивного клиентского веб-приложения **Karting Drive** на этапе проектирования (до реализации кода). Он определяет структуру файлов, распределение ответственности между модулями, потоки данных, работу с API и ключевые архитектурные решения.
 
-Документ опирается на требования из [`01-mvp-requirements.md`](01-mvp-requirements.md) и схему данных из [`03-data-model.md`](03-data-model.md).
+Документ опирается на требования из [`01-mvp-requirements.md`](01-mvp-requirements.md), схему данных из [`03-data-model.md`](03-data-model.md) и API-контракт из [`04-api-contract.md`](04-api-contract.md).
 
 ---
 
 ## 2. Архитектурный подход
 
-Приложение строится по принципу **клиентского SPA без серверной части**:
+Приложение строится как **адаптивный веб-клиент (mobile-first)** для существующего backend:
 
 - Единственная HTML-страница (`index.html`) содержит все экраны интерфейса.
 - Логика разделена на ES-модули в каталоге `js/`.
-- Статические данные (тарифы, слоты времени) хранятся в `data.js`.
-- Состояние корзины персистится в **LocalStorage** браузера.
-- Навигация между экранами выполняется на JavaScript без перезагрузки страницы.
+- Все данные (слоты, бронирования, уведомления) поступают из API.
+- Backend — black-box источник истины; клиент — только потребитель.
+- Mock API (`mock-api.js`) для учебной демонстрации без реального backend.
+- LocalStorage — только для UX (предзаполнение полей), не источник истины.
 - Фреймворки и внешние библиотеки не используются.
 
 ```mermaid
 graph TB
     subgraph Browser["Браузер пользователя"]
         HTML["index.html<br/>Разметка и экраны"]
-        CSS["style.css<br/>Стили"]
+        CSS["css/style.css<br/>Стили (mobile-first)"]
         subgraph JS["JavaScript-модули"]
-            DATA["data.js<br/>Статические данные"]
-            APP["app.js<br/>Инициализация, UI, навигация"]
-            BOOK["booking.js<br/>Настройка заезда, оформление"]
-            CART["cart.js<br/>Корзина, LocalStorage"]
+            APP["js/app.js<br/>Инициализация, UI, навигация"]
+            API["js/api.js<br/>HTTP-клиент"]
+            MOCK["js/mock-api.js<br/>Имитация backend"]
+            SLOTS["js/slots.js<br/>Расписание слотов"]
+            BOOK["js/booking.js<br/>Создание бронирования"]
+            MYB["js/my-bookings.js<br/>Мои бронирования / отмена"]
+            NOTIF["js/notifications.js<br/>Уведомления"]
         end
-        LS[("LocalStorage<br/>kartingCart<br/>kartingBookings")]
+        LS[("LocalStorage<br/>(только UX)")]
     end
 
-    HTML --> APP
-    CSS --> HTML
-    DATA --> APP
-    DATA --> BOOK
+    subgraph Backend["Existing Backend (black-box)"]
+        API_SLOTS["GET /slots<br/>GET /slots/{id}"]
+        API_BOOK["POST /bookings<br/>GET /bookings<br/>GET /bookings/{id}<br/>POST /bookings/{id}/cancel"]
+    end
+
+    API --> Backend
+    MOCK -.->|"учебный режим"| APP
+    APP --> SLOTS
     APP --> BOOK
-    APP --> CART
-    BOOK --> CART
-    CART --> LS
-    BOOK --> LS
+    APP --> MYB
+    APP --> NOTIF
+    SLOTS --> API
+    BOOK --> API
+    MYB --> API
+    NOTIF --> API
+    APP -.-> LS
 ```
 
 ---
 
 ## 3. Общая схема приложения
 
-Приложение реализует линейный пользовательский путь с возможностью возврата к каталогу тарифов:
-
 ```mermaid
 stateDiagram-v2
-    [*] --> Tariffs: Загрузка страницы
-    Tariffs --> TariffDetail: Выбор тарифа
-    TariffDetail --> Tariffs: Назад
-    TariffDetail --> Cart: Добавить в корзину
-    Tariffs --> Cart: Переход в корзину
-    Cart --> Tariffs: Продолжить выбор
-    Cart --> Checkout: Оформить (корзина не пуста)
-    Checkout --> Confirmation: Успешное оформление
-    Confirmation --> Tariffs: Новое бронирование
-    Cart --> Tariffs: Пустая корзина / редактирование
+    [*] --> Slots: Загрузка страницы
+    Slots --> SlotDetail: Выбор слота
+    SlotDetail --> BookingForm: Заполнение данных
+    BookingForm --> Slots: Назад
+    BookingForm --> Confirmation: Создание брони
+    Confirmation --> Slots: Новое бронирование
+    Confirmation --> MyBookings: Мои брони
+    Slots --> MyBookings: Переход
+    MyBookings --> BookingDetail: Выбор брони
+    BookingDetail --> MyBookings: Назад
+    BookingDetail --> MyBookings: Отмена
+    Slots --> Notifications: Уведомления
 ```
 
-**Экраны интерфейса** (секции в `index.html`, переключаемые через CSS-классы или атрибуты):
+**Экраны интерфейса** (секции в `index.html`, переключаемые через CSS-классы):
 
 | Экран | ID (план) | Назначение |
 |-------|-----------|------------|
-| Каталог тарифов | `#screen-tariffs` | Список карточек тарифов |
-| Настройка заезда | `#screen-booking` | Детали тарифа, дата, время, участники, стоимость |
-| Корзина | `#screen-cart` | Позиции, редактирование, итоговая сумма |
-| Оформление | `#screen-checkout` | Форма имени и телефона |
-| Подтверждение | `#screen-confirmation` | Номер бронирования и сводка |
+| Расписание слотов | `#screen-slots` | Список слотов на 7 дней с фильтром периода |
+| Детали слота | `#screen-slot-detail` | Информация о слоте + выбор участников и экипировки |
+| Форма бронирования | `#screen-booking-form` | Ввод имени, телефона, подтверждение |
+| Подтверждение | `#screen-confirmation` | ID бронирования, статус, детали |
+| Мои бронирования | `#screen-my-bookings` | Список бронирований клиента |
+| Детали бронирования | `#screen-booking-detail` | Полная информация + кнопка отмены |
+| Уведомления | `#screen-notifications` | Список уведомлений |
 
 ---
 
@@ -80,424 +93,402 @@ stateDiagram-v2
 
 | Слой | Реализация | Ответственность |
 |------|------------|-----------------|
-| **Presentation** | `index.html`, `style.css`, функции рендеринга в `app.js` | Разметка, стили, отображение данных, переключение экранов |
-| **Application** | `app.js`, `booking.js` | Оркестрация сценариев: выбор тарифа, валидация, оформление |
-| **Domain** | `cart.js`, функции расчёта в `booking.js` | Бизнес-логика: корзина, расчёт цены, генерация номера бронирования |
-| **Data** | `data.js`, LocalStorage API | Статический каталог тарифов, персистентное хранение корзины и бронирований |
-
-Слои не изолированы физически (нет DI-контейнера) — связь через прямые импорты ES-модулей и общие функции.
+| **Presentation** | `index.html`, `style.css`, функции рендеринга | Разметка, стили, отображение данных, переключение экранов |
+| **Application** | `app.js`, `slots.js`, `booking.js`, `my-bookings.js`, `notifications.js` | Оркестрация сценариев, валидация, бизнес-логика |
+| **API Client** | `api.js`, `mock-api.js` | HTTP-запросы к backend; имитация API; обработка ошибок |
+| **Data** | API-ответы (DTO), LocalStorage (только UX) | Временное хранение данных сессии |
 
 ---
 
-## 5. Назначение HTML, CSS и JavaScript
-
-### HTML (`index.html`)
-
-- Семантическая структура: `header`, `main`, `footer`.
-- Контейнеры для каждого экрана приложения.
-- Шаблонные области для динамического контента (карточки тарифов, позиции корзины).
-- Формы: выбор даты/времени/участников, контактные данные.
-- Подключение модулей через `<script type="module" src="js/app.js">`.
-- Без inline-логики — обработчики назначаются из JavaScript.
-
-### CSS (`style.css`)
-
-- Единый файл стилей для всего приложения.
-- CSS-переменные для цветов, отступов, шрифтов.
-- Адаптивная вёрстка (mobile-first, breakpoints для tablet/desktop).
-- Стили состояний: активный экран, disabled-кнопки, сообщения об ошибках.
-- Стили компонентов: карточки тарифов, корзина, формы, экран подтверждения.
-
-### JavaScript (модули в `js/`)
-
-- ES-модули (`import` / `export`).
-- Разделение по зонам ответственности (см. раздел 6).
-- DOM-манипуляции, валидация, расчёты, работа с LocalStorage.
-- Без глобальных переменных в `window` (кроме точки входа).
-
----
-
-## 6. Назначение каждого будущего файла
+## 5. Назначение каждого будущего файла
 
 ```
 karting/
-├── index.html          # Структура интерфейса, все экраны SPA
+├── index.html              # Структура интерфейса, все экраны SPA
 ├── css/
-│   └── style.css       # Оформление и адаптивность
+│   └── style.css           # Mobile-first адаптивные стили
 ├── js/
-│   ├── data.js         # Тарифы и доступное время
-│   ├── app.js          # Запуск приложения и отображение тарифов
-│   ├── booking.js      # Выбор параметров заезда и оформление бронирования
-│   └── cart.js         # Добавление, изменение, удаление и сохранение корзины
+│   ├── app.js              # Инициализация, навигация, корневой рендер
+│   ├── api.js              # HTTP-клиент для реального backend
+│   ├── mock-api.js         # Имитация backend для учебной версии
+│   ├── slots.js            # Просмотр и фильтрация расписания слотов
+│   ├── booking.js          # Создание бронирования
+│   ├── my-bookings.js      # Просмотр и отмена своих бронирований
+│   └── notifications.js    # Уведомления об отмене центром
 └── docs/
+    ├── 00-client-brief.md
+    ├── 00-elicitation.md
     ├── 01-mvp-requirements.md
     ├── 02-architecture.md
     ├── 03-data-model.md
+    ├── 04-api-contract.md
     └── prompts.md
 ```
 
-### `js/data.js`
+### `js/api.js`
 
 | Экспорт (план) | Назначение |
 |----------------|------------|
-| `TARIFFS` | Массив объектов тарифов (4 демо-тарифа) |
-| `AVAILABLE_TIMES` | Массив доступных временных слотов |
-| `getTariffById(id)` | Поиск тарифа по идентификатору |
-| `getAvailableTimes()` | Возврат списка слотов времени |
+| `fetchSlots(dateFrom, dateTo)` | GET /slots |
+| `fetchSlot(slotId)` | GET /slots/{slotId} |
+| `createBooking(data)` | POST /bookings |
+| `fetchBookings(status?)` | GET /bookings |
+| `fetchBooking(bookingId)` | GET /bookings/{bookingId} |
+| `cancelBooking(bookingId, reason?)` | POST /bookings/{bookingId}/cancel |
+| `setBaseUrl(url)` | Переключение между real API и mock |
 
-Данные статичны, не изменяются пользователем.
+Каждая функция:
+- Принимает параметры, возвращает Promise.
+- При ошибке HTTP пробрасывает объект `ApiError` (статус, код, сообщение, детали).
+- Не содержит логики отображения — только transport.
+
+### `js/mock-api.js`
+
+| Экспорт (план) | Назначение |
+|----------------|------------|
+| `MockApi` | Класс/объект, реализующий те же методы, что и `api.js` |
+| Данные | Тестовые слоты, бронирования, уведомления |
+| Задержка | Имитация сетевой задержки (300–800 мс) |
+| 409 симуляция | Возможность сконфигурировать конфликт для тестирования |
+
+Mock API переключается через `setBaseUrl('mock')` или флаг в `app.js`.
 
 ### `js/app.js`
 
 | Функция (план) | Назначение |
 |----------------|------------|
-| `init()` | Точка входа: восстановление корзины, рендер тарифов, навигация |
-| `renderTariffs()` | Отрисовка карточек тарифов на главном экране |
+| `init()` | Точка входа: выбор режима (real/mock), инициализация экранов, навигация |
 | `showScreen(screenId)` | Переключение видимого экрана |
-| `updateCartBadge()` | Обновление счётчика позиций в шапке |
+| `renderApp()` | Рендер базовой структуры |
 | `bindNavigation()` | Обработчики навигационных элементов |
+| `handleError(error)` | Централизованная обработка ошибок (показ сообщения) |
 
-Координирует модули `booking.js` и `cart.js`, не содержит бизнес-логики корзины.
+### `js/slots.js`
+
+| Функция (план) | Назначение |
+|----------------|------------|
+| `loadSlots(dateFrom, dateTo)` | Загрузка слотов через API и рендер списка |
+| `renderSlotList(slots)` | Отрисовка списка слотов, сгруппированных по дням |
+| `renderEmptyState()` | Отображение сообщения при отсутствии слотов |
+| `renderSlotCard(slot)` | Карточка слота с основными данными |
+| `openSlotDetail(slotId)` | Переход к детальной информации слота |
+| `applyFilters()` | Применение фильтра периода |
+| `resetFilters()` | Сброс к 7 дням по умолчанию |
 
 ### `js/booking.js`
 
 | Функция (план) | Назначение |
 |----------------|------------|
-| `openBookingForm(tariffId)` | Открытие формы настройки заезда для выбранного тарифа |
-| `validateRideParams(params, tariff)` | Валидация даты, времени, участников |
-| `calculatePrice(tariff, participants)` | Расчёт стоимости по `priceType` |
-| `handleAddToCart()` | Сбор параметров, валидация, вызов `cart.addItem()` |
-| `openCheckout()` | Переход к форме оформления |
-| `validateCustomer(customer)` | Валидация имени и телефона |
-| `createBooking(customer, cartItems)` | Создание объекта `Booking`, генерация номера |
-| `generateBookingNumber()` | Формат `KD-YYYYMMDD-XXXX` |
-| `handleSubmitBooking()` | Оформление: валидация → создание → сохранение → очистка корзины |
-| `renderConfirmation(booking)` | Отображение экрана подтверждения |
+| `showBookingForm(slot)` | Открытие формы с деталями слота |
+| `renderSlotDetails(slot)` | Отображение трассы, маршала, цены, адреса |
+| `renderEquipmentOptions(options)` | Список доступной экипировки |
+| `updateTotalPrice()` | Пересчёт стоимости (участники + экипировка) |
+| `validateForm()` | Валидация имени, телефона, участников |
+| `submitBooking()` | Отправка POST /bookings |
+| `handleConflict()` | Обработка 409 |
+| `renderConfirmation(booking)` | Экран подтверждения |
 
-### `js/cart.js`
+### `js/my-bookings.js`
 
 | Функция (план) | Назначение |
 |----------------|------------|
-| `loadCart()` | Чтение корзины из LocalStorage (`kartingCart`) |
-| `saveCart()` | Запись корзины в LocalStorage |
-| `getItems()` | Возврат массива позиций |
-| `addItem(cartItem)` | Добавление позиции с пересчётом и сохранением |
-| `updateItemParticipants(id, participants)` | Изменение участников с пересчётом `totalPrice` |
-| `removeItem(id)` | Удаление позиции |
-| `clearCart()` | Очистка корзины в памяти и LocalStorage |
-| `getTotalPrice()` | Сумма `totalPrice` всех позиций |
-| `isEmpty()` | Проверка пустой корзины |
-| `renderCart()` | Отрисовка содержимого корзины |
+| `loadMyBookings(status?)` | Загрузка списка бронирований |
+| `renderBookingList(bookings)` | Отрисовка списка |
+| `openBookingDetail(bookingId)` | Детальный просмотр бронирования |
+| `renderBookingDetail(booking)` | Отображение всех полей, статуса, кнопки отмены |
+| `cancelBooking(bookingId)` | Отмена с подтверждением |
+| `renderCancelButton(booking)` | Показ/скрытие кнопки в зависимости от canCancel |
+
+### `js/notifications.js`
+
+| Функция (план) | Назначение |
+|----------------|------------|
+| `loadNotifications()` | Загрузка уведомлений из mock API |
+| `renderNotificationList(notifications)` | Отрисовка списка уведомлений |
+| `markAsRead(notificationId)` | Отметка прочитанным |
+| `getUnreadCount()` | Количество непрочитанных (для badge) |
+| `openRelatedBooking(notification)` | Переход к связанному бронированию |
 
 ### `css/style.css`
 
-- Базовые стили, типографика, сетка.
-- Компоненты UI: `.tariff-card`, `.cart-item`, `.time-slot`, `.btn`, `.form-field`, `.error-message`.
-- Утилиты видимости: `.screen`, `.screen--active`.
-- Media queries: `480px`, `768px`, `1024px`.
+- Mobile-first: минимальные стили для телефона, расширение для планшета/десктопа.
+- CSS-переменные для цветовой схемы.
+- БЭМ-подход для классов компонентов.
+- Адаптивная сетка (flexbox/grid).
+- Состояния: загрузка, ошибка, пусто, активно/неактивно.
 
 ### `index.html`
 
-- Шапка с логотипом, навигацией и badge корзины.
-- Секции экранов (тарифы, настройка, корзина, оформление, подтверждение).
-- Подвал с контактами картинг-центра.
-- Пустые контейнеры для динамически генерируемого контента.
+- Семантическая разметка: header, main, nav, section.
+- Все экраны приложения (см. раздел 3).
+- Подключение `<script type="module" src="js/app.js">`.
+- Контейнеры для динамического контента.
+- Шапка с логотипом, навигацией, badge уведомлений.
 
 ---
 
-## 7. Взаимодействие компонентов
+## 6. Взаимодействие компонентов
 
 ```mermaid
 graph LR
     APP["app.js"]
+    SLOTS["slots.js"]
     BOOK["booking.js"]
-    CART["cart.js"]
-    DATA["data.js"]
+    MYB["my-bookings.js"]
+    NOTIF["notifications.js"]
+    API["api.js"]
+    MOCK["mock-api.js"]
     DOM["DOM / index.html"]
     LS[("LocalStorage")]
 
-    APP -->|"init, renderTariffs"| DOM
-    APP -->|"import TARIFFS"| DATA
-    APP -->|"updateCartBadge, renderCart"| CART
-    APP -->|"openBookingForm, showScreen"| BOOK
+    APP -->|"init, showScreen"| DOM
+    APP -->|"import"| API
+    APP -->|"import"| MOCK
+    APP --> SLOTS
+    APP --> BOOK
+    APP --> MYB
+    APP --> NOTIF
 
-    BOOK -->|"getTariffById, AVAILABLE_TIMES"| DATA
-    BOOK -->|"addItem, getItems, clearCart"| CART
-    BOOK -->|"calculatePrice, validate"| BOOK
-    BOOK -->|"saveBooking"| LS
-    BOOK -->|"renderConfirmation"| DOM
+    SLOTS -->|"fetchSlots, fetchSlot"| API
+    SLOTS --> DOM
 
-    CART -->|"loadCart, saveCart"| LS
-    CART -->|"renderCart"| DOM
+    BOOK -->|"createBooking"| API
+    BOOK -->|"showConfirmation"| DOM
+    BOOK --> LS
+
+    MYB -->|"fetchBookings, cancelBooking"| API
+    MYB --> DOM
+
+    NOTIF -->|"fetchNotifications"| API
+    NOTIF --> DOM
+
+    MOCK -.->|"тестовые данные"| API
 ```
 
 **Правила взаимодействия:**
 
-- `data.js` не импортирует другие модули — только экспортирует данные и хелперы.
-- `cart.js` импортирует `data.js` (для пересчёта цены при изменении участников) и `booking.js` (функция `calculatePrice`) либо содержит локальную копию расчёта — **решение:** `calculatePrice` определяется в `booking.js` и импортируется в `cart.js` для избежания дублирования.
-- `booking.js` импортирует `cart.js` и `data.js`.
-- `app.js` импортирует все модули, является оркестратором.
-- Прямых циклических импортов избегаем: если `cart.js` нужен `calculatePrice`, он импортируется из `booking.js`; `booking.js` не импортирует функции рендеринга из `app.js`.
+- `api.js` / `mock-api.js` — транспортный слой, не содержит логики отображения.
+- `slots.js`, `booking.js`, `my-bookings.js`, `notifications.js` — сценарии использования, содержат и рендеринг, и бизнес-логику.
+- `app.js` — оркестратор, инициализирует модули, управляет навигацией.
+- `mock-api.js` реализует тот же интерфейс, что и `api.js`, для бесшовного переключения.
+- Циклических импортов избегаем.
 
 ---
 
-## 8. Поток данных
+## 7. Поток данных
 
-### 8.1. Загрузка и отображение тарифов
-
-```mermaid
-sequenceDiagram
-    participant User as Пользователь
-    participant App as app.js
-    participant Data as data.js
-    participant Cart as cart.js
-    participant LS as LocalStorage
-    participant DOM as DOM
-
-    User->>App: Открывает index.html
-    App->>Cart: loadCart()
-    Cart->>LS: getItem("kartingCart")
-    LS-->>Cart: JSON или null
-    Cart-->>App: массив позиций
-    App->>Data: import TARIFFS
-    Data-->>App: массив тарифов
-    App->>DOM: renderTariffs(TARIFFS)
-    App->>DOM: updateCartBadge()
-    App->>DOM: showScreen("tariffs")
-```
-
-### 8.2. Выбор тарифа
+### 7.1. Загрузка расписания слотов
 
 ```mermaid
 sequenceDiagram
     participant User as Пользователь
     participant App as app.js
-    participant Book as booking.js
-    participant Data as data.js
+    participant Slots as slots.js
+    participant API as api.js
     participant DOM as DOM
 
-    User->>App: Клик по карточке тарифа
-    App->>Book: openBookingForm(tariffId)
-    Book->>Data: getTariffById(tariffId)
-    Data-->>Book: объект Tariff
-    Book->>Data: getAvailableTimes()
-    Data-->>Book: массив AvailableTime
-    Book->>DOM: Заполнение формы (описание, ограничения, слоты)
-    Book->>DOM: Установка min даты = сегодня
-    Book->>DOM: showScreen("booking")
-    User->>Book: Меняет дату / время / участников
-    Book->>Book: validateRideParams()
-    Book->>Book: calculatePrice()
-    Book->>DOM: Обновление отображаемой стоимости
-```
-
-### 8.3. Добавление заезда в корзину
-
-```mermaid
-sequenceDiagram
-    participant User as Пользователь
-    participant Book as booking.js
-    participant Cart as cart.js
-    participant LS as LocalStorage
-    participant DOM as DOM
-
-    User->>Book: «Добавить в корзину»
-    Book->>Book: validateRideParams()
-    alt Валидация не пройдена
-        Book->>DOM: Показать сообщение об ошибке
-    else Валидация пройдена
-        Book->>Book: Формирование CartItem
-        Book->>Cart: addItem(cartItem)
-        Cart->>Cart: items.push(cartItem)
-        Cart->>LS: setItem("kartingCart", JSON)
-        Cart->>DOM: updateCartBadge()
-        Book->>DOM: showScreen("cart") или уведомление
+    User->>App: Открывает страницу
+    App->>Slots: loadSlots(today, today+7)
+    Slots->>API: fetchSlots(dateFrom, dateTo)
+    alt Успех
+        API-->>Slots: Slot[]
+        Slots->>DOM: renderSlotList(slots)
+    else Пустой ответ
+        API-->>Slots: []
+        Slots->>DOM: renderEmptyState()
+    else Ошибка
+        API-->>Slots: ApiError
+        Slots->>DOM: renderError(message)
     end
 ```
 
-### 8.4. Восстановление корзины из LocalStorage
-
-```mermaid
-sequenceDiagram
-    participant App as app.js
-    participant Cart as cart.js
-    participant LS as LocalStorage
-
-    App->>Cart: loadCart()
-    Cart->>LS: getItem("kartingCart")
-    alt Данные есть и валидны
-        LS-->>Cart: JSON-строка
-        Cart->>Cart: JSON.parse → массив CartItem
-        Cart->>Cart: Фильтрация позиций с прошедшей датой (опционально)
-    else Данных нет или JSON повреждён
-        LS-->>Cart: null / throw
-        Cart->>Cart: items = []
-        Cart->>LS: setItem("kartingCart", "[]")
-    end
-    Cart-->>App: готовая корзина
-```
-
-### 8.5. Оформление бронирования
+### 7.2. Создание бронирования
 
 ```mermaid
 sequenceDiagram
     participant User as Пользователь
     participant Book as booking.js
-    participant Cart as cart.js
-    participant LS as LocalStorage
+    participant API as api.js
     participant DOM as DOM
 
-    User->>Book: «Оформить бронирование»
-    Book->>Cart: isEmpty()
-    alt Корзина пуста
-        Book->>DOM: Ошибка «Корзина пуста»
-    else Корзина не пуста
-        Book->>DOM: showScreen("checkout")
-        User->>Book: Ввод имени и телефона
-        User->>Book: «Подтвердить»
-        Book->>Book: validateCustomer()
-        alt Форма невалидна
-            Book->>DOM: Сообщения об ошибках
-        else Форма валидна
-            Book->>Book: generateBookingNumber()
-            Book->>Book: createBooking(customer, items)
-            Book->>LS: append to "kartingBookings"
-            Book->>Cart: clearCart()
-            Cart->>LS: setItem("kartingCart", "[]")
+    User->>Book: Заполняет форму, нажимает «Забронировать»
+    Book->>Book: validateForm()
+    alt Форма невалидна
+        Book->>DOM: Показать ошибки валидации
+    else Форма валидна
+        Book->>Book: Блокировка кнопки
+        Book->>API: createBooking(data)
+        alt 201 Created
+            API-->>Book: Booking
             Book->>DOM: renderConfirmation(booking)
-            Book->>DOM: showScreen("confirmation")
+        else 409 Conflict
+            API-->>Book: ApiError(409)
+            Book->>Book: handleConflict()
+            Book->>DOM: Сообщение о конфликте
+        else 422 Unprocessable
+            API-->>Book: ApiError(422)
+            Book->>DOM: Ошибки по полям
+        else Ошибка сети / 5xx
+            API-->>Book: ApiError
+            Book->>DOM: Сообщение об ошибке
         end
+        Book->>Book: Разблокировка кнопки
     end
 ```
 
-### 8.6. Очистка корзины после оформления
+### 7.3. Отмена бронирования
 
 ```mermaid
 sequenceDiagram
-    participant Book as booking.js
-    participant Cart as cart.js
-    participant LS as LocalStorage
-    participant App as app.js
+    participant User as Пользователь
+    participant MyB as my-bookings.js
+    participant API as api.js
     participant DOM as DOM
 
-    Book->>Cart: clearCart()
-    Cart->>Cart: items = []
-    Cart->>LS: setItem("kartingCart", "[]")
-    Cart->>App: updateCartBadge()
-    App->>DOM: badge = 0
-    User->>App: «Новое бронирование»
-    App->>DOM: showScreen("tariffs")
-    Note over Cart,LS: Корзина пуста,<br/>LocalStorage синхронизирован
+    User->>MyB: Открывает детали бронирования
+    MyB->>MyB: renderCancelButton(booking)
+    alt canCancel=true
+        User->>MyB: Нажимает «Отменить»
+        MyB->>MyB: Подтверждение (опционально)
+        MyB->>API: cancelBooking(bookingId, reason)
+        alt 200 OK
+            API-->>MyB: Booking (status=cancelled_by_client)
+            MyB->>DOM: Обновление статуса
+        else 409 Conflict
+            API-->>MyB: ApiError(409)
+            MyB->>DOM: «Отмена невозможна»
+        end
+    else canCancel=false
+        MyB->>DOM: Кнопка неактивна + причина
+    end
 ```
+
+### 7.4. Уведомления от центра
+
+```mermaid
+sequenceDiagram
+    participant User as Пользователь
+    participant Notif as notifications.js
+    participant API as api.js
+    participant DOM as DOM
+
+    User->>Notif: Открывает уведомления
+    Notif->>API: fetchNotifications()
+    API-->>Notif: Notification[]
+    Notif->>DOM: renderNotificationList(notifications)
+    User->>Notif: Клик по уведомлению
+    Notif->>Notif: markAsRead(id)
+    Notif->>DOM: openRelatedBooking(relatedBookingId)
+```
+
+---
+
+## 8. Обработка ошибок API
+
+### 8.1. Принципы
+
+- Все функции `api.js` возвращают `Promise`.
+- При HTTP-ошибке пробрасывается `ApiError` с полями `{ status, code, message, details }`.
+- Каждый модуль-сценарий обрабатывает `ApiError` и отображает пользователю понятное сообщение.
+- Сетевая ошибка (fetch не выполнен) оборачивается в `ApiError(0, 'NETWORK_ERROR', '...')`.
+
+### 8.2. Обработка 409 Conflict
+
+- **POST /bookings → 409**: слот занят. Отобразить сообщение, предложить выбрать другой слот.
+- **POST /bookings/{id}/cancel → 409**: отмена невозможна. Показать причину из API.
+- После 409 клиент остаётся на текущем экране (данные не сбрасываются).
+
+### 8.3. Обработка других статусов
+
+| Статус | Действие |
+|--------|----------|
+| 400 | Показать «Некорректный запрос. Проверьте данные» |
+| 401 | Показать «Ошибка доступа. Перезагрузите страницу или обратитесь в центр» (детали — после определения механизма идентификации) |
+| 404 | Показать «Запрошенные данные не найдены» |
+| 422 | Отобразить ошибки валидации по полям формы |
+| 500 | Показать «Произошла ошибка на сервере. Попробуйте позже» |
+| 503 | Показать «Сервис временно недоступен. Попробуйте позже» |
+| Сеть | Показать «Нет соединения. Проверьте интернет» |
 
 ---
 
 ## 9. Работа с LocalStorage
 
-### Ключи
+### 9.1. Принципы
 
-| Ключ | Тип значения | Назначение |
-|------|--------------|------------|
-| `kartingCart` | `JSON` → `CartItem[]` | Персистентная корзина пользователя |
-| `kartingBookings` | `JSON` → `Booking[]` | Локальный журнал оформленных бронирований (демо) |
+- LocalStorage **не является источником истины** (BR-01).
+- Используется только для UX-улучшений: предзаполнение имени и телефона при повторных визитах.
+- Не хранит корзину, бронирования или кэш слотов.
 
-> **Примечание:** в [`01-mvp-requirements.md`](01-mvp-requirements.md) (FR-11) указан ключ `karting-drive-cart`. На этапе проектирования принят ключ **`kartingCart`** согласно схеме данных этапа 2. При реализации используется `kartingCart`.
+### 9.2. Ключи
 
-### Операции
+| Ключ | Тип | Назначение |
+|------|-----|------------|
+| `kartingCustomerName` | `string` | Последнее введённое имя (предзаполнение) |
+| `kartingCustomerPhone` | `string` | Последний введённый телефон (предзаполнение) |
 
-| Операция | Модуль | Когда |
-|----------|--------|-------|
-| Чтение корзины | `cart.js` → `loadCart()` | При инициализации приложения |
-| Запись корзины | `cart.js` → `saveCart()` | После add / update / remove |
-| Очистка корзины | `cart.js` → `clearCart()` | После успешного оформления |
-| Запись бронирования | `booking.js` | После успешного `createBooking()` |
-| Чтение бронирований | `booking.js` (опционально) | Для проверки уникальности номера |
+### 9.3. Обработка ошибок
 
-### Обработка ошибок LocalStorage
+- LocalStorage недоступен — формы работают без предзаполнения.
+- Ошибки LocalStorage не влияют на функциональность приложения.
 
-- **`JSON.parse` ошибка** → инициализация пустой корзины, перезапись ключа.
-- **`localStorage` недоступен** (приватный режим, квота) → работа корзины только в памяти на время сессии; предупреждение пользователю.
-- **QuotaExceededError** → сообщение пользователю, корзина остаётся в памяти.
+---
 
-### Формат хранения
+## 10. Mock API (учебная версия)
+
+### Назначение
+
+Mock API имитирует работу backend для демонстрации и разработки без реального сервера.
+
+### Принципы
+
+- Реализует все 6 endpoints из API-контракта.
+- Содержит тестовые данные: 10+ слотов на 7 дней, 2 трассы, 2 маршала, 5+ бронирований (разные статусы), тестовые уведомления.
+- Симулирует задержку 300–800 мс.
+- Имеет настройку для симуляции 409 (флаг `simulateConflict: true`).
+- Имеет настройку для симуляции ошибок (`simulateError: true`).
+- Данные не персистятся между сессиями (сбрасываются при перезагрузке).
+
+### Переключение режима
 
 ```javascript
-// kartingCart
-[
-  {
-    "id": "ci-1709123456789",
-    "tariffId": "adult",
-    "tariffName": "Взрослый заезд",
-    "date": "2026-07-05",
-    "time": "14:00",
-    "participants": 2,
-    "priceType": "perPerson",
-    "price": 1000,
-    "totalPrice": 2000
-  }
-]
+// В app.js
+const USE_MOCK = true; // или URL параметр, env, etc.
 
-// kartingBookings
-[
-  {
-    "id": "bk-1709123456790",
-    "bookingNumber": "KD-20260705-A3F2",
-    "customerName": "Иван Петров",
-    "customerPhone": "+7 999 123-45-67",
-    "items": [ /* CartItem[] */ ],
-    "totalPrice": 2000,
-    "createdAt": "2026-07-05T14:30:00.000Z",
-    "status": "new"
-  }
-]
+if (USE_MOCK) {
+  setBaseUrl('mock');
+}
 ```
 
 ---
 
-## 10. Основные архитектурные решения
+## 11. Основные архитектурные решения
 
 | # | Решение | Обоснование |
 |---|---------|-------------|
-| AD-01 | Одностраничное приложение (SPA) на чистом JS | FR-19, NFR-04: без фреймворков, без перезагрузки |
-| AD-02 | ES-модули вместо одного monolith-файла | NFR-05: логическое разделение кода |
-| AD-03 | Статические данные в `data.js` | FR-01, BR-10: тарифы не редактируются пользователем |
-| AD-04 | Корзина как единственный источник правды в памяти + синхронизация с LS | FR-11–FR-13: немедленное сохранение |
-| AD-05 | `priceType` (`perPerson` / `fixed`) для гибкого расчёта | Поддержка тарифа «Аренда трассы» с фиксированной ценой |
-| AD-06 | Денормализация в `CartItem` (`tariffName`, `price`, `priceType`) | Восстановление корзины без повторного обращения к каталогу |
-| AD-07 | Генерация номера бронирования на клиенте | FR-16, BR-03: формат `KD-YYYYMMDD-XXXX` |
-| AD-08 | Переключение экранов через CSS-классы | Простота реализации без router-библиотек |
-| AD-09 | Валидация на клиенте в `booking.js` | Единая точка бизнес-правил до добавления в корзину и оформления |
-| AD-10 | `kartingBookings` в LocalStorage для учебной демонстрации | Локальное хранение истории без сервера; не заменяет серверную БД |
+| AD-01 | API-first: все данные из backend через HTTP | Backend — единственный источник истины (R-015) |
+| AD-02 | Mock API для учебной версии | Нет реального сервера для разработки (NFR-08) |
+| AD-03 | Mobile-first адаптивная вёрстка | Основной канал — телефон клиента (письмо Дениса) |
+| AD-04 | SPA без фреймворков на чистом JS | FR-23, NFR-04 |
+| AD-05 | ES-модули для разделения кода | NFR-05 |
+| AD-06 | ApiError как единый формат ошибок | Единообразная обработка ошибок API (R-031) |
+| AD-07 | Блокировка кнопки submit при двойном клике | Предотвращение повторной отправки (NFR-09) |
+| AD-08 | LocalStorage только для UX | Не источник истины (R-032) |
+| AD-09 | Нет корзины: прямое бронирование | Новый пользовательский путь (без CartItem) |
+| AD-10 | Отдельный модуль уведомлений | Уведомления — сквозная функция (R-010, R-008) |
 
 ---
 
-## 11. Ограничения архитектуры
+## 12. Ограничения архитектуры
 
 | Ограничение | Описание |
 |-------------|----------|
-| Нет серверной валидации | Все проверки выполняются на клиенте и могут быть обойдены |
-| Нет реальной проверки занятости слотов | Слоты статичны (BR-05) |
-| LocalStorage привязан к браузеру и устройству | Корзина не синхронизируется между устройствами |
-| Нет аутентификации | Любой пользователь браузера видит и изменяет локальные данные |
-| Нет онлайн-оплаты | Бронирование без финансовой транзакции (BR-04) |
+| Зависимость от backend | При недоступности API приложение бесполезно (кроме UI) |
+| Нет офлайн-режима | Все данные требуют соединения с сервером |
+| Механизм идентификации клиента не определён (TBD) | 401 учитывается как возможная ошибка API; конкретный способ идентификации — на подтверждении у заказчика. В MVP нет логина/регистрации |
+| Mock API не персистит данные | При перезагрузке тестовые данные сбрасываются |
 | Один HTML-файл | Масштабирование UI ограничено размером DOM |
-| Нет сборщика (bundler) | Модули загружаются нативно; нужен HTTP-сервер или `file://` с ограничениями CORS для модулей |
-
----
-
-## 12. Возможное дальнейшее развитие
-
-| Направление | Описание |
-|-------------|----------|
-| Backend API | Серверная валидация, реальная проверка слотов, персистентные бронирования |
-| База данных | Хранение тарифов, заказов, клиентов |
-| Авторизация | Личный кабинет, история бронирований |
-| Онлайн-оплата | Интеграция платёжного шлюза |
-| Admin-панель | Управление тарифами, расписанием, заказами |
-| Уведомления | Email/SMS-подтверждение бронирования |
-| Router | Hash- или History-API маршрутизация для deep links |
-| TypeScript / сборщик | Типизация и оптимизация бандла |
-| PWA | Офлайн-доступ, установка на устройство |
+| Нет сборщика (bundler) | Модули загружаются нативно; нужен HTTP-сервер |
 
 ---
 
@@ -505,11 +496,12 @@ sequenceDiagram
 
 Архитектура считается корректной, если:
 
-- [ ] Структура файлов соответствует согласованной схеме проекта.
-- [ ] Каждый модуль имеет чёткую зону ответственности без дублирования логики.
-- [ ] Все user stories US-01 — US-19 покрыты потоками данных и функциями модулей.
-- [ ] LocalStorage используется только для `kartingCart` и `kartingBookings`.
-- [ ] Отсутствуют ссылки на сервер, API, базу данных, оплату, авторизацию.
-- [ ] Потоки: загрузка тарифов, выбор тарифа, добавление в корзину, восстановление корзины, оформление, очистка — описаны и согласованы с [`03-data-model.md`](03-data-model.md).
-- [ ] Архитектурные решения не противоречат FR-01 — FR-20 и BR-01 — BR-10.
-- [ ] Документ может служить основой для реализации без дополнительных архитектурных решений.
+- [ ] Структура файлов соответствует схеме проекта.
+- [ ] Каждый модуль имеет чёткую зону ответственности.
+- [ ] Все user stories US-01 — US-13 покрыты потоками данных.
+- [ ] API-клиент обрабатывает все статусы (400, 401, 404, 409, 422, 500, 503).
+- [ ] Mock API реализует все endpoints контракта.
+- [ ] LocalStorage не используется как источник истины.
+- [ ] Отсутствуют ссылки на корзину, тарифы, оплату, админку.
+- [ ] Mobile-first подход отражён в именовании экранов и стилях.
+- [ ] Документ может служить основой для реализации.
