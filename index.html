@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Апекс — Картинг-центр</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header__inner">
+      <a href="#" class="header__logo" id="nav-slots">Апекс</a>
+      <nav class="header__nav">
+        <span class="header__nav-item header__nav-item--active">Заезды</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Screen: Slots list -->
+    <section class="screen screen--active" id="screen-slots">
+      <div class="container">
+        <h1 class="page-title">Расписание заездов</h1>
+
+        <div class="filters" id="filters-bar">
+          <div class="filters__row">
+            <div class="filters__group">
+              <label class="filters__label" for="filter-date-from">От</label>
+              <input type="date" class="filters__input" id="filter-date-from">
+            </div>
+            <div class="filters__group">
+              <label class="filters__label" for="filter-date-to">До</label>
+              <input type="date" class="filters__input" id="filter-date-to">
+            </div>
+          </div>
+          <div class="filters__row">
+            <div class="filters__group">
+              <label class="filters__label" for="filter-track">Трасса</label>
+              <select class="filters__input" id="filter-track">
+                <option value="all">Все трассы</option>
+                <option value="track-short">Короткая трасса</option>
+                <option value="track-long">Длинная трасса</option>
+                <option value="track-pro">Профессиональная трасса</option>
+              </select>
+            </div>
+            <div class="filters__group">
+              <label class="filters__label" for="filter-difficulty">Сложность</label>
+              <select class="filters__input" id="filter-difficulty">
+                <option value="all">Любая</option>
+                <option value="easy">Лёгкая</option>
+                <option value="medium">Средняя</option>
+                <option value="hard">Сложная</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn--outline btn--full" id="filter-reset">Сбросить фильтры</button>
+        </div>
+
+        <!-- Loading state -->
+        <div id="slots-loading" class="state-message hidden">
+          <div class="loading-spinner"></div>
+          <p>Загружаем расписание...</p>
+        </div>
+
+        <!-- Error state -->
+        <div id="slots-error" class="state-message state-message--error hidden">
+          <p class="state-message__icon">⚠</p>
+          <p id="slots-error-msg">Произошла ошибка при загрузке.</p>
+          <button class="btn btn--primary" id="slots-retry-btn">Повторить</button>
+        </div>
+
+        <!-- Empty state -->
+        <div id="slots-empty" class="state-message hidden">
+          <p class="state-message__icon">🏁</p>
+          <p>Пока нет доступных заездов</p>
+          <p class="state-message__hint">Попробуйте изменить даты или сбросить фильтры</p>
+        </div>
+
+        <!-- Slot list -->
+        <div id="slots-list" class="hidden"></div>
+      </div>
+    </section>
+
+    <!-- Screen: Slot detail -->
+    <section class="screen" id="screen-slot-detail">
+      <div class="container">
+        <button class="btn btn--back" id="btn-back-from-detail">← Назад</button>
+        <div id="slot-detail-content"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p class="footer__text">Картинг-центр «Апекс» · ул. Картинговая, 1</p>
+    </div>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
