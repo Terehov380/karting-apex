@@ -254,3 +254,131 @@ export function getAvailableFilters() {
     ]
   };
 }
+
+let seeded = false;
+
+function seedDemoBookings() {
+  if (seeded) return;
+  seeded = true;
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  if (stored.some(b => b.status === 'cancelled_by_center')) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const def = SLOT_DEFS[0];
+  const slot = buildSlot(def, today);
+
+  const now = new Date();
+  const deadline = new Date(slot.startAt);
+  deadline.setMinutes(deadline.getMinutes() - 15);
+  const pastHour = new Date(now.getTime() - 3600000);
+
+  const demo = {
+    id: 'bk-demo-cancelled-center',
+    bookingNumber: 'APEX-DEMO01',
+    slot: {
+      id: slot.id,
+      startAt: slot.startAt,
+      durationMinutes: slot.durationMinutes,
+      trackConfiguration: { ...slot.trackConfiguration },
+      marshal: { ...slot.marshal },
+      centerAddress: slot.centerAddress,
+      meetingPoint: slot.meetingPoint
+    },
+    participantsCount: 2,
+    equipmentSelection: 'full',
+    equipmentPricePerPerson: 600,
+    customer: { name: 'Демо', phone: '+7 999 111-22-33' },
+    totalPrice: slot.basePrice * 2 + 600 * 2,
+    status: 'cancelled_by_center',
+    canCancel: false,
+    cancellationDeadline: deadline.toISOString(),
+    cancellationInfo: {
+      reason: 'Слот отменён центром по техническим причинам. Приносим извинения.',
+      cancelledAt: pastHour.toISOString(),
+      cancelledBy: 'center'
+    },
+    createdAt: new Date(now.getTime() - 7200000).toISOString(),
+    updatedAt: pastHour.toISOString()
+  };
+
+  stored.push(demo);
+  localStorage.setItem(LS_KEY, JSON.stringify(stored));
+}
+
+export async function mockFetchBookings() {
+  if (simulateErrorFlag) {
+    throw { status: 500, code: 'INTERNAL_SERVER_ERROR', message: 'Ошибка сервера. Попробуйте позже.' };
+  }
+  await delay();
+  seedDemoBookings();
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  return { bookings: stored.slice().reverse() };
+}
+
+export async function mockFetchBooking(bookingId) {
+  if (simulateErrorFlag) {
+    throw { status: 500, code: 'INTERNAL_SERVER_ERROR', message: 'Ошибка сервера. Попробуйте позже.' };
+  }
+  await delay();
+  seedDemoBookings();
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  const booking = stored.find(b => b.id === bookingId);
+  if (!booking) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Бронирование не найдено.' };
+  }
+  return booking;
+}
+
+export async function mockCancelBooking(bookingId) {
+  if (simulateErrorFlag) {
+    throw { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Сервис временно недоступен. Попробуйте позже.' };
+  }
+  await delay();
+
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  const idx = stored.findIndex(b => b.id === bookingId);
+  if (idx === -1) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Бронирование не найдено.' };
+  }
+
+  const booking = stored[idx];
+  if (booking.status !== 'confirmed') {
+    throw { status: 422, code: 'CANCEL_NOT_ALLOWED', message: 'Это бронирование нельзя отменить.' };
+  }
+  if (!booking.canCancel) {
+    throw { status: 422, code: 'CANCEL_NOT_ALLOWED', message: 'Отмена этого бронирования запрещена.' };
+  }
+
+  const now = new Date();
+  const deadline = new Date(booking.cancellationDeadline);
+  if (now > deadline) {
+    throw { status: 422, code: 'DEADLINE_PASSED', message: 'Срок отмены бронирования истёк.' };
+  }
+
+  booking.status = 'cancelled_by_client';
+  booking.canCancel = false;
+  booking.cancellationInfo = {
+    reason: 'Отменено клиентом',
+    cancelledAt: now.toISOString(),
+    cancelledBy: 'client'
+  };
+  booking.updatedAt = now.toISOString();
+
+  const slotId = booking.slot.id;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const def of SLOT_DEFS) {
+    const s = buildSlot(def, today);
+    if (s.id === slotId) {
+      const currentKarts = getKarts(slotId, def);
+      setKarts(slotId, currentKarts + booking.participantsCount);
+      break;
+    }
+  }
+
+  stored[idx] = booking;
+  localStorage.setItem(LS_KEY, JSON.stringify(stored));
+
+  return booking;
+}

@@ -1,4 +1,5 @@
 import { initSlots, loadSlots, showScreen } from './slots.js';
+import { initMyBookings, setActiveNav } from './my-bookings.js';
 import { toDateInputValue, getToday, getDatePlusDays } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -15,6 +16,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     navSlots.addEventListener('click', (e) => {
       e.preventDefault();
       showScreen('slots');
+      setActiveNav('slots');
+    });
+  }
+
+  const navSlotsBtn = document.querySelector('[data-nav="slots"]');
+  if (navSlotsBtn) {
+    navSlotsBtn.addEventListener('click', () => {
+      showScreen('slots');
+      setActiveNav('slots');
     });
   }
 
@@ -26,6 +36,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  document.addEventListener('booking:cancelled', () => {
+    const df = document.getElementById('filter-date-from');
+    const dt = document.getElementById('filter-date-to');
+    if (df && dt) {
+      loadSlots(df.value, dt.value);
+    }
+  });
+
   initSlots();
+  initMyBookings();
   await loadSlots(dateFrom, dateTo);
+  setActiveNav('slots');
 });

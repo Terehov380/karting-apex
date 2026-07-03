@@ -11,7 +11,8 @@
     <div class="header__inner">
       <a href="#" class="header__logo" id="nav-slots">Апекс</a>
       <nav class="header__nav">
-        <span class="header__nav-item header__nav-item--active">Заезды</span>
+        <button type="button" class="header__nav-item header__nav-item--active" data-nav="slots">Заезды</button>
+        <button type="button" class="header__nav-item" data-nav="my-bookings">Мои бронирования</button>
       </nav>
     </div>
   </header>
@@ -101,6 +102,31 @@
     <section class="screen" id="screen-booking-confirmation">
       <div class="container">
         <div id="booking-confirmation-content"></div>
+      </div>
+    </section>
+
+    <!-- Screen: My Bookings -->
+    <section class="screen" id="screen-my-bookings">
+      <div class="container">
+        <h1 class="page-title">Мои бронирования</h1>
+
+        <div id="bookings-loading" class="state-message hidden">
+          <div class="loading-spinner"></div>
+          <p>Загружаем бронирования...</p>
+        </div>
+
+        <div id="bookings-error" class="state-message state-message--error hidden">
+          <p class="state-message__icon">⚠</p>
+          <p id="bookings-error-msg">Произошла ошибка при загрузке.</p>
+          <button class="btn btn--primary" id="bookings-retry-btn">Повторить</button>
+        </div>
+
+        <div id="bookings-empty" class="state-message hidden">
+          <p class="state-message__icon">📋</p>
+          <p>У вас пока нет бронирований</p>
+        </div>
+
+        <div id="bookings-list" class="hidden"></div>
       </div>
     </section>
   </main>

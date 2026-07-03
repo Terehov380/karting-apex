@@ -290,7 +290,7 @@ export function resetFilters() {
 }
 
 function showScreen(screenId) {
-  ['slots', 'slot-detail', 'booking-form', 'booking-confirmation'].forEach(id => {
+  ['slots', 'slot-detail', 'booking-form', 'booking-confirmation', 'my-bookings'].forEach(id => {
     const el = $(`screen-${id}`);
     if (el) el.classList.toggle('screen--active', id === screenId);
   });

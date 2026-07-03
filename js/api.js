@@ -1,4 +1,4 @@
-import { mockFetchSlots, mockFetchSlot, mockCreateBooking } from './mock-api.js';
+import { mockFetchSlots, mockFetchSlot, mockCreateBooking, mockFetchBookings, mockFetchBooking, mockCancelBooking } from './mock-api.js';
 
 let useMock = true;
 const BASE_URL = 'https://api.karting-apex.ru/v1';
@@ -50,5 +50,22 @@ export async function createBooking(data) {
   return request('/bookings', {
     method: 'POST',
     body: JSON.stringify(data)
+  });
+}
+
+export async function fetchBookings() {
+  if (useMock) return mockFetchBookings();
+  return request('/bookings');
+}
+
+export async function fetchBooking(bookingId) {
+  if (useMock) return mockFetchBooking(bookingId);
+  return request(`/bookings/${encodeURIComponent(bookingId)}`);
+}
+
+export async function cancelBooking(bookingId) {
+  if (useMock) return mockCancelBooking(bookingId);
+  return request(`/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+    method: 'POST'
   });
 }
