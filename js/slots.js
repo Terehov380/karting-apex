@@ -1,4 +1,5 @@
 import { fetchSlots, fetchSlot } from './api.js';
+import { openBookingForm } from './booking.js';
 import {
   formatPrice, formatDate, formatTime, formatDuration,
   difficultyLabel, difficultyClass, statusLabel, statusClass,
@@ -187,6 +188,8 @@ export async function showSlotDetail(slotId) {
 
 function renderSlotDetail(slot, container) {
   const isUnavailable = !slot.bookingAllowed || slot.status === 'cancelled' || slot.status === 'closed';
+  const isFull = slot.availableKarts === 0;
+  const canBook = slot.bookingAllowed && slot.status === 'available' && !isFull;
   const diffLabel = difficultyLabel(slot.trackConfiguration.difficulty);
   const diffClass = difficultyClass(slot.trackConfiguration.difficulty);
 
@@ -201,6 +204,7 @@ function renderSlotDetail(slot, container) {
       <div class="slot-detail__status ${statusClass(slot.status)}">
         ${statusLabel(slot.status)}
         ${!slot.bookingAllowed && slot.status === 'available' ? '· запись закрыта' : ''}
+        ${isFull ? '· все карты заняты' : ''}
       </div>
 
       <div class="slot-detail__section">
@@ -239,11 +243,18 @@ function renderSlotDetail(slot, container) {
         <p class="slot-detail__meeting">Место сбора: ${escapeHtml(slot.meetingPoint)}</p>
       </div>
 
-      ${slot.bookingAllowed && slot.status === 'available'
-        ? `<button class="btn btn--primary btn--full" disabled>Бронирование будет доступно в следующей версии</button>`
-        : `<p class="slot-detail__unavailable">Этот слот недоступен для бронирования</p>`}
+      ${canBook
+        ? `<button class="btn btn--primary btn--full btn--book" id="btn-book-slot">Записаться</button>`
+        : `<p class="slot-detail__unavailable">${isFull ? 'Все карты заняты' : 'Этот слот недоступен для бронирования'}</p>`}
     </div>
   `;
+
+  if (canBook) {
+    const bookBtn = container.querySelector('#btn-book-slot');
+    if (bookBtn) {
+      bookBtn.addEventListener('click', () => openBookingForm(slot));
+    }
+  }
 }
 
 export function initSlots() {
@@ -258,6 +269,9 @@ export function initSlots() {
   });
   $('btn-back-from-detail').addEventListener('click', () => {
     showScreen('slots');
+  });
+  $('btn-back-from-booking').addEventListener('click', () => {
+    showScreen('slot-detail');
   });
 }
 
@@ -276,11 +290,12 @@ export function resetFilters() {
 }
 
 function showScreen(screenId) {
-  ['slots', 'slot-detail'].forEach(id => {
+  ['slots', 'slot-detail', 'booking-form', 'booking-confirmation'].forEach(id => {
     const el = $(`screen-${id}`);
     if (el) el.classList.toggle('screen--active', id === screenId);
   });
-  document.body.classList.toggle('body--detail-open', screenId === 'slot-detail');
+  const isOpen = screenId === 'slot-detail' || screenId === 'booking-form' || screenId === 'booking-confirmation';
+  document.body.classList.toggle('body--detail-open', isOpen);
 }
 
 export { showScreen };

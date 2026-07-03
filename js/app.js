@@ -18,6 +18,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  document.addEventListener('booking:created', () => {
+    const df = document.getElementById('filter-date-from');
+    const dt = document.getElementById('filter-date-to');
+    if (df && dt) {
+      loadSlots(df.value, dt.value);
+    }
+  });
+
   initSlots();
   await loadSlots(dateFrom, dateTo);
 });

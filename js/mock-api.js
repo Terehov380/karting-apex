@@ -120,6 +120,130 @@ export async function mockFetchSlot(slotId) {
   throw { status: 404, code: 'NOT_FOUND', message: 'Слот не найден.' };
 }
 
+const slotStates = new Map();
+const LS_KEY = 'kartingMockBookings';
+
+const EQUIPMENT_PACKAGES = [
+  { id: 'none', name: 'Своя экипировка', pricePerPerson: 0 },
+  { id: 'helmet', name: 'Шлем', pricePerPerson: 200 },
+  { id: 'helmet_balaclava', name: 'Шлем + Подшлемник', pricePerPerson: 300 },
+  { id: 'full', name: 'Полный комплект', pricePerPerson: 600 }
+];
+
+function getSlotDef(slotId) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const def of SLOT_DEFS) {
+    const s = buildSlot(def, today);
+    if (s.id === slotId) return { def, slot: s };
+  }
+  return null;
+}
+
+function getKarts(slotId, def) {
+  if (slotStates.has(slotId)) return slotStates.get(slotId);
+  return def.karts;
+}
+
+function setKarts(slotId, val) {
+  slotStates.set(slotId, val);
+}
+
+function generateBookingNumber() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let r = '';
+  for (let i = 0; i < 6; i++) r += chars[Math.floor(Math.random() * chars.length)];
+  return `APEX-${r}`;
+}
+
+export async function mockCreateBooking(data) {
+  if (simulateErrorFlag) {
+    throw { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Сервис временно недоступен. Попробуйте позже.' };
+  }
+  await delay();
+
+  const found = getSlotDef(data.slotId);
+  if (!found) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Слот не найден.' };
+  }
+  const { def, slot } = found;
+
+  if (!slot.bookingAllowed) {
+    throw { status: 422, code: 'BOOKING_NOT_ALLOWED', message: 'Бронирование на этот слот запрещено.' };
+  }
+  if (slot.status === 'cancelled' || slot.status === 'closed') {
+    throw { status: 422, code: 'SLOT_UNAVAILABLE', message: 'Слот недоступен для бронирования.' };
+  }
+
+  const pc = data.participantsCount;
+  if (!Number.isInteger(pc) || pc < 1) {
+    throw { status: 400, code: 'INVALID_PARTICIPANTS', message: 'Количество участников должно быть не менее 1.' };
+  }
+
+  const currentKarts = getKarts(data.slotId, def);
+  if (pc > currentKarts) {
+    throw { status: 409, code: 'NOT_ENOUGH_KARTS', message: `Недостаточно свободных картов. Доступно: ${currentKarts}.` };
+  }
+  if (pc > slot.maxParticipants) {
+    throw { status: 400, code: 'EXCEEDS_MAX', message: `Максимум участников для этого слота: ${slot.maxParticipants}.` };
+  }
+
+  if (!data.customer?.name?.trim()) {
+    throw { status: 400, code: 'MISSING_NAME', message: 'Укажите имя.' };
+  }
+  if (!data.customer?.phone?.trim()) {
+    throw { status: 400, code: 'MISSING_PHONE', message: 'Укажите телефон.' };
+  }
+
+  const eqPkg = EQUIPMENT_PACKAGES.find(p => p.id === data.equipmentSelection);
+  const rentalPrice = eqPkg ? eqPkg.pricePerPerson : 0;
+  const totalPrice = slot.basePrice * pc + rentalPrice * pc;
+
+  const now = new Date();
+  const deadline = new Date(slot.startAt);
+  deadline.setMinutes(deadline.getMinutes() - 15);
+
+  const booking = {
+    id: `bk-${Date.now()}`,
+    bookingNumber: generateBookingNumber(),
+    slot: {
+      id: slot.id,
+      startAt: slot.startAt,
+      durationMinutes: slot.durationMinutes,
+      trackConfiguration: { ...slot.trackConfiguration },
+      marshal: { ...slot.marshal },
+      centerAddress: slot.centerAddress,
+      meetingPoint: slot.meetingPoint
+    },
+    participantsCount: pc,
+    equipmentSelection: data.equipmentSelection,
+    equipmentPricePerPerson: rentalPrice,
+    customer: {
+      name: data.customer.name.trim(),
+      phone: data.customer.phone.trim()
+    },
+    totalPrice,
+    status: 'confirmed',
+    canCancel: true,
+    cancellationDeadline: deadline.toISOString(),
+    cancellationInfo: null,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  };
+
+  setKarts(data.slotId, currentKarts - pc);
+
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  stored.push(booking);
+  localStorage.setItem(LS_KEY, JSON.stringify(stored));
+
+  return booking;
+}
+
+export function getEquipmentPackages() {
+  return EQUIPMENT_PACKAGES.map(p => ({ ...p }));
+}
+
 export function getAvailableFilters() {
   return {
     tracks: TRACKS.map(t => ({ id: t.id, name: t.name })),
