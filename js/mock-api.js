@@ -103,6 +103,10 @@ export async function mockFetchSlots(dateFrom, dateTo) {
       return d >= from && d <= to;
     })
     .map(def => buildSlot(def, today));
+  for (const s of slots) {
+    const found = getSlotDef(s.id);
+    if (found) s.availableKarts = getKarts(s.id, found.def);
+  }
   return { slots };
 }
 
@@ -115,12 +119,15 @@ export async function mockFetchSlot(slotId) {
   today.setHours(0, 0, 0, 0);
   for (const def of SLOT_DEFS) {
     const candidate = buildSlot(def, today);
-    if (candidate.id === slotId) return candidate;
+    if (candidate.id === slotId) {
+      const found = getSlotDef(slotId);
+      if (found) candidate.availableKarts = getKarts(slotId, found.def);
+      return candidate;
+    }
   }
   throw { status: 404, code: 'NOT_FOUND', message: 'Слот не найден.' };
 }
 
-const slotStates = new Map();
 const LS_KEY = 'kartingMockBookings';
 
 const EQUIPMENT_PACKAGES = [
@@ -141,12 +148,11 @@ function getSlotDef(slotId) {
 }
 
 function getKarts(slotId, def) {
-  if (slotStates.has(slotId)) return slotStates.get(slotId);
-  return def.karts;
-}
-
-function setKarts(slotId, val) {
-  slotStates.set(slotId, val);
+  const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  const bookedCount = stored
+    .filter(b => b.slot.id === slotId && b.status === 'confirmed')
+    .reduce((sum, b) => sum + b.participantsCount, 0);
+  return Math.max(0, def.karts - bookedCount);
 }
 
 function generateBookingNumber() {
@@ -230,8 +236,6 @@ export async function mockCreateBooking(data) {
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
   };
-
-  setKarts(data.slotId, currentKarts - pc);
 
   const stored = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
   stored.push(booking);
@@ -364,18 +368,6 @@ export async function mockCancelBooking(bookingId) {
     cancelledBy: 'client'
   };
   booking.updatedAt = now.toISOString();
-
-  const slotId = booking.slot.id;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (const def of SLOT_DEFS) {
-    const s = buildSlot(def, today);
-    if (s.id === slotId) {
-      const currentKarts = getKarts(slotId, def);
-      setKarts(slotId, currentKarts + booking.participantsCount);
-      break;
-    }
-  }
 
   stored[idx] = booking;
   localStorage.setItem(LS_KEY, JSON.stringify(stored));
